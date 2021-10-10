@@ -35,8 +35,9 @@ function restartBot(channel) {
 bot.on("message", (msg) => {
     const args = msg.content.split(" ");
 
-    if(msg.channel.id !== "885812578624892938") return;
-    if(msg.author.bot) return;if(args[0] === `${prefix}w`){
+    if(msg.channel.id !== channelID) return;
+    if(msg.author.bot) return;
+    if(args[0] === `${prefix}w`){
         if(!currentChannel.active) return msg.reply(`No session active... Start one with \`${prefix}start\``);
         msg.react('🤫');
     } else if(args[0] === `${prefix}start`){
