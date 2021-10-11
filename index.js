@@ -5,6 +5,7 @@ const chalk = require('chalk');
 const bot = new Discord.Client();
 const om = new Omegle();
 const conf = require('./config.json');
+const { nanoid } = require('nanoid');
 const prefix = conf.prefix;
 const channelID = conf.channelID;
 const GID = conf.guildID;
@@ -17,16 +18,39 @@ let isModerated = true;
 let spyMode = false;
 const errorCodes = require('./errorCodes.json');
 
+let currentChannel = {
+    active: false,
+    id: '',
+    startMsg: '',
+    started: false,
+    cid: ''
+}
+
 function strangerEvent(str){
+    if(!currentChannel.active) return;
     console.log(chalk.yellow(`Stranger`) + `[${chalk.red(str ? str : 'Unkown')}]`);
 }
 function botEvent(str){
     console.log(chalk.yellow(`Bot`) + `[${chalk.red(bot.user.username)}]` + `[${chalk.blueBright(str ? str : 'Unkown')}]`);
 }
 
-function messageEvent(stranger = true, message = 'N/A'){
-    console.log(chalk.yellow(`${stranger ? 'Stranger' : 'Bot'}:Message`) + `[${chalk.blueBright(message)}]`)
+function messageEvent(stranger = true, message = 'N/A', uid = 'none'){
+    console.log(chalk.yellow(`${stranger ? 'Stranger' : 'Bot'}:Message`) + `[${chalk.blueBright(message)}]`);
+    addMsgToLog(message, stranger, uid)
 }
+let chatSession = {};
+
+
+function addMsgToLog(message = 'N/A', stranger = false, authorId = 'none'){
+    if(!chatSession[currentChannel["cid"]]) chatSession[currentChannel["cid"]] = [];
+
+    chatSession[currentChannel["cid"]].push({
+        stranger,
+        message,
+        authorId
+    })
+}
+
 
 let db = {};
 
@@ -40,7 +64,6 @@ fs.readFile('./data.json', "utf-8", (err, jsonStr) => {
 
 function setModerationState(){
     if(db.moderated === "false") isModerated = false;
-    console.log(isModerated)
 }
 
 function setValue(key, val, msg){
@@ -61,13 +84,6 @@ function setValue(key, val, msg){
     });
 }
 
-let currentChannel = {
-    active: false,
-    id: '',
-    startMsg: '',
-    started: false
-}
-
 
 bot.on("message", (msg) => {
     const args = msg.content.split(" ");
@@ -75,10 +91,35 @@ bot.on("message", (msg) => {
     if(msg.channel.id !== channelID) return;
     if(msg.author.bot) return;
 
-    if(args[0] === `${prefix}setdb`){
+    if(args[0] === `${prefix}getchat`){
         if(!_BOT_ADMINS_.includes(msg.author.id)) return;
-        if(!args[1]) return msg.reply('args[1] missing.');
-        if(!args[2]) return msg.reply('args[2] missing.');
+        if(!args[1]) return msg.reply('ID missing.');
+        if(!args[2]) return msg.reply('Provide what you want to see. (0-25)');
+
+        const counts = args[2].split("-");
+        if(counts.length < 2) return msg.reply('Provide what you want to see. (0-25) <- format');
+
+        if(isNaN(counts[0]) || isNaN(counts[1])) return msg.reply('Valid numbers expected.');
+
+        const sessions = fs.readFileSync('./messages.json', 'utf-8');
+        const sessionJson = JSON.parse(sessions);
+
+        if(!sessionJson[args[1]]) return msg.reply("Session ID not found.");
+
+        let messages = sessionJson[args[1]];
+
+        const formatedMsg = messages.slice(counts[0], counts[1]);
+
+        const listItems = formatedMsg.map(i => {
+            return (`${i.stranger ? 'Stranger' : `Bot(${i.authorId})`}: ${i.message}`)
+        });
+        
+        const msgReady = listItems.join("\n---\m");
+        bot.users.cache.get(msg.author.id).send(`**${args[1]} MSG-LOG [${listItems.length}/${messages.length}]**\n\n${msgReady}`)
+    } else if(args[0] === `${prefix}setdb`){
+        if(!_BOT_ADMINS_.includes(msg.author.id)) return;
+        if(!args[1]) return msg.reply('Key missing.');
+        if(!args[2]) return msg.reply('Val missing.');
 
         setValue(args[1], args[2], msg)
     } else if(args[0] === `${prefix}w`){
@@ -148,7 +189,8 @@ bot.on("message", (msg) => {
         if(!message[0]) return msg.reply("Cannot send an empty message.");
 
         message = message.join(" ");
-        messageEvent(false, message);
+        messageEvent(false, message, msg.author.id);
+        
         om.send(message);
     }
 });
@@ -190,6 +232,22 @@ om.on("stoppedTyping", () => {
 om.on("disconnected", () => {
     botEvent('disconnected')
     bot.guilds.cache.get(GID).channels.cache.get(channelID).stopTyping()
+    fs.readFile('./messages.json', 'utf-8', (err, jstr) => {
+        let existingLog = JSON.parse(jstr);
+        console.log(currentChannel.cid)
+        console.log(chatSession[currentChannel.cid])
+        existingLog[currentChannel.cid] = chatSession[currentChannel.cid];
+
+        fs.writeFile('./messages.json', JSON.stringify(existingLog), err => {
+            if(err){
+                botEvent(`ErrorWritingData`);
+            } else {
+                botEvent('AddedLog')
+            }
+        });
+        chatSession = {};
+        currentChannel.cid = '';
+    })
 })
 
 om.on("antinudeBanned", () => {
@@ -292,12 +350,14 @@ om.on('waiting', function(){
 om.on('connected',function(){
 	botEvent('connected');
 
+    currentChannel.cid = nanoid(14);
     
     const embed = new Discord.MessageEmbed()
         .setTitle(`**Connected to Stranger**`)
         .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
         .setColor('#2F95DC')
         .addField('Status', `🟢 Connected`, true)
+        .addField('ID', currentChannel.cid)
         .setTimestamp()
         .setFooter(_FOOTER_TEXT_)
 
