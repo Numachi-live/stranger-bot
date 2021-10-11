@@ -21,7 +21,11 @@ function strangerEvent(str){
     console.log(chalk.yellow(`Stranger`) + `[${chalk.red(str ? str : 'Unkown')}]`);
 }
 function botEvent(str){
-    console.log(chalk.yellow(`BOT`) + `[${chalk.red(bot.user.username)}]` + `[${chalk.blueBright(str ? str : 'Unkown')}]`);
+    console.log(chalk.yellow(`Bot`) + `[${chalk.red(bot.user.username)}]` + `[${chalk.blueBright(str ? str : 'Unkown')}]`);
+}
+
+function messageEvent(stranger = true, message = 'N/A'){
+    console.log(chalk.yellow(`${stranger ? 'Stranger' : 'Bot'}:Message`) + `[${chalk.blueBright(message)}]`)
 }
 
 let db = {};
@@ -36,6 +40,7 @@ fs.readFile('./data.json', "utf-8", (err, jsonStr) => {
 
 function setModerationState(){
     if(db.moderated === "false") isModerated = false;
+    console.log(isModerated)
 }
 
 function setValue(key, val, msg){
@@ -46,11 +51,12 @@ function setValue(key, val, msg){
     fs.writeFile('./data.json', JSON.stringify(parsed), err => {
         if(err){
             botEvent(`ErrorWritingData`);
-            msg.reply('Error writing data...');
+            if(msg) msg.reply('Error writing data...');
         } else {
-            msg.reply('New data set successfully.');
+            if(msg) msg.reply('New data set successfully.');
             db = parsed;
             setModerationState();
+            console.log(isModerated)
         }
     });
 }
@@ -142,6 +148,7 @@ bot.on("message", (msg) => {
         if(!message[0]) return msg.reply("Cannot send an empty message.");
 
         message = message.join(" ");
+        messageEvent(false, message);
         om.send(message);
     }
 });
@@ -192,11 +199,35 @@ om.on("antinudeBanned", () => {
     
     const banEmbed = new Discord.MessageEmbed()
         .setTitle(`Banned From Omegle`)
-        .setDescription(`The host of this bot was temporarily banned by omegle, please be patient!`)
+        .setDescription(`The host of this bot was temporarily banned by omegle, entering unmoderated mode!`)
         .setTimestamp()
         .setColor('#ff0d39')
         .setFooter(_FOOTER_TEXT_)
 
+    setValue('moderated', 'false');
+    om.connect([], false);
+
+    setTimeout(() => {
+        if(!currentChannel.started){
+            botEvent('Timeout:10s:Disconnect');
+            om.disconnect();
+            currentChannel.started = false;
+            currentChannel.active = false;
+            const embed = new Discord.MessageEmbed()
+                .setTitle(`**No Stranger found...**`)
+                .setDescription(`No stranger was found 😦`)
+                .addField('Status', `🔴 Disconnected`, true)
+                .setColor('#2F95DC')
+                .setTimestamp()
+                .setFooter(_FOOTER_TEXT_)
+        
+            bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
+                .then(msg=> {
+                    msg.edit(embed)
+                })
+        }
+    }, 10000);
+    
     return bot.channels.cache.get(channelID).send(banEmbed);
 });
 
@@ -289,6 +320,8 @@ om.on('gotMessage',function(msg){
             const strangerString = errorStrings.stranger.replace("[REJECTED-WORD]", w);
 
             botEvent(`Banned word detected, rejecting Stranger. (${w})`);
+            messageEvent(true, `BANNED:` + msg);
+
             om.send(strangerString + '\nhttps://hc.numachi.live/t/forced-disconnection-x0273/25');
 
             om.disconnect();
@@ -308,7 +341,7 @@ om.on('gotMessage',function(msg){
     }
 
     try {
-        strangerEvent(msg ? msg : 'No Message');
+        messageEvent(true, msg);
         const embed = new Discord.MessageEmbed()
             .setTitle(`Stranger`)
             .setDescription(msg)
@@ -318,7 +351,7 @@ om.on('gotMessage',function(msg){
     
         bot.channels.cache.get(channelID).send(embed);
     } catch(e){
-        strangerEvent('No Message');
+        messageEvent(true, msg);
         const embed = new Discord.MessageEmbed()
             .setTitle(`Stranger [Invalid Message]`)
             .setDescription(`Message from Stranger was invalid...`)
