@@ -1,3 +1,5 @@
+// https://www.npmjs.com/package/omegle-node-fix <-- original, edited by Numachi.live
+
 //jshint node:true
 //jshint esversion:6
 var request = require('request');
@@ -8,7 +10,7 @@ var Omegle = function () {
 	ee.call(this);
 	this.useragent = 'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:47.0) Gecko/20100101 Firefox/47.0';
 	this.language = 'en';
-	var url = 'front31.omegle.com';
+	var url = 'front1.omegle.com';
 	var workingServers=[];
 	var gotID = false;
 	var isConnected = false;
