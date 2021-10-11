@@ -14,6 +14,7 @@ const _BOT_ADMINS_ = conf.admins;
 const _FOOTER_TEXT_ = `Powered by Numachi`;
 let bannedWordList = conf.bannedWords;
 let isModerated = true;
+let spyMode = false;
 const errorCodes = require('./errorCodes.json');
 
 function strangerEvent(str){
@@ -34,7 +35,6 @@ fs.readFile('./data.json', "utf-8", (err, jsonStr) => {
 });
 
 function setModerationState(){
-    console.log(db.moderated)
     if(db.moderated === "false") isModerated = false;
 }
 
@@ -62,12 +62,6 @@ let currentChannel = {
     started: false
 }
 
-
-function restartBot(channel) {
-    channel.send('Restarting')
-        .then(msg => bot.destroy())
-        .then(() => bot.login(_TOKEN_));
-}
 
 bot.on("message", (msg) => {
     const args = msg.content.split(" ");
