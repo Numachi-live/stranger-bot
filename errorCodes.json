@@ -1,0 +1,8 @@
+{
+    "x": {
+        "0273": {
+            "client": "[x0273] A banned word was triggered: **[REJECTED-WORD]**. Stranger rejected.",
+            "stranger": "[x0273] You are banned from talking to the Stranger(s) that are using this bot due to a word that was banned: [REJECTED-WORD]"
+        }
+    }
+}
