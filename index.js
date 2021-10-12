@@ -196,12 +196,14 @@ bot.on("message", (msg) => {
             delete tags[0];
         }
 
+        currentChannel.cid = nanoid(14);
         om.connect(args[1] ? tags : [], isModerated);
         const embed = new Discord.MessageEmbed()
             .setTitle(args[1] ? `**Finding Session**` : `**Connecting to Stranger**`)
             .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
             .setColor('#2F95DC')
             .addField('Status', `🟠 Connecting... (Will auto-disconnect in 10 seconds if no stranger is found)`, true)
+            .addField('ID', currentChannel.cid)
             .setTimestamp()
             .setFooter(_FOOTER_TEXT_)
 
@@ -216,22 +218,25 @@ bot.on("message", (msg) => {
         setTimeout(() => {
             if(!currentChannel.started){
                 botEvent('Timeout:10s:Disconnect');
-                om.disconnect();
                 currentChannel.started = false;
                 currentChannel.active = false;
                 const embed = new Discord.MessageEmbed()
                     .setTitle(`**No Stranger found...**`)
                     .setDescription(`No stranger was found 😦`)
                     .addField('Status', `🔴 Disconnected`, true)
+                    .addField('ID', currentChannel.cid)
+                    .addField('Next?', 'Searching for random Stranger...')
                     .setColor('#2F95DC')
                     .setTimestamp()
                     .setFooter(_FOOTER_TEXT_)
             
                 try {
-                    bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
+                    om.stopLookingForCommonLikes(() => {
+                        bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
                         .then(msg=> {
                             msg.edit(embed)
                         })
+                    })
                 } catch(e){
                     // send new
                     bot.channels.cache.get(channelID).send(embed);
@@ -270,6 +275,7 @@ om.on("commonLikes", (likes) => {
         .setTitle(`**Connected to Stranger**`)
         .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
         .addField('Status', `🟢 Connected`, true)
+        .addField('ID', currentChannel.cid)
         .addField('Common Interests', likes, true)
         .setColor('#2F95DC')
         .setTimestamp()
@@ -388,7 +394,8 @@ om.on("waiting", () => {
     const embed = new Discord.MessageEmbed()
         .setTitle(`**Finding Stranger**`)
         .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
-        .addField('Status', `🟠 Waiting`, true)
+        .addField('Status', `🟠 Waiting...`, true)
+        .addField('ID', currentChannel.cid)
         .setColor('#2F95DC')
         .setTimestamp()
         .setFooter(_FOOTER_TEXT_)
@@ -423,7 +430,6 @@ om.on('waiting', function(){
 om.on('connected',function(){
 	botEvent('connected');
 
-    currentChannel.cid = nanoid(14);
     const embed = new Discord.MessageEmbed()
         .setTitle(`**Connected to Stranger**`)
         .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
@@ -435,13 +441,22 @@ om.on('connected',function(){
 
     if(!isModerated) embed.addField(`⚠️ Unmoderated`, `You are currently on the unmoderated version of omegle!`)
 
+    //? Some weird bug, fix this later...
+    
+    // bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
+    //     .then(msg=> {
+    //         console.log(msg.id, 'aaaaa')
+    //         try {
+    //             msg.edit(embed)
+    //         } catch(e){
+    //             console.log(e)
+    //         }
+    //     }).catch(e => {
+    //         bot.channels.cache.get(channelID).send(embed);
+    //     });
 
-    bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
-        .then(msg=> {
-            msg.edit(embed)
-        }).catch(e => {
-            bot.channels.cache.get(channelID).send(embed);
-        });
+    //? Fallback code
+    bot.channels.cache.get(channelID).send(`${ isModerated ? '' : '`⚠️ UNMODERATED`' } **Connected to stranger! [${currentChannel.cid}]**\n\n**Guidelines**\n${conf.guidelines}`)
 
     currentChannel.started = true;
     currentChannel.active = true;
