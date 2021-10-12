@@ -1,5 +1,6 @@
 const Omegle = require('./omegle');
 const Discord = require('discord.js');
+const axios = require('axios');
 require('dotenv').config();
 const chalk = require('chalk');
 const bot = new Discord.Client();
@@ -12,11 +13,12 @@ const GID = conf.guildID;
 const _TOKEN_ = process.env["TOKEN"];
 const fs = require('fs');
 const _BOT_ADMINS_ = conf.admins;
-const _FOOTER_TEXT_ = `Powered by Numachi`;
+const _FOOTER_TEXT_ = `Powered by Numachi.live`;
 let bannedWordList = conf.bannedWords;
 let isModerated = true;
 let spyMode = false;
 const errorCodes = require('./errorCodes.json');
+const _API_URI_ = 'https://api-o.numachi.live' // DONT CHANGE UNLESS YOU KNOW WHAT YOU ARE DOING
 
 let currentChannel = {
     active: false,
@@ -38,6 +40,23 @@ function messageEvent(stranger = true, message = 'N/A', uid = 'none'){
     console.log(chalk.yellow(`${stranger ? 'Stranger' : 'Bot'}:Message`) + `[${chalk.blueBright(message)}]`);
     addMsgToLog(message, stranger, uid)
 }
+
+function indexDatabase(){
+    if(!conf.useNumachiWordDB) return botEvent('NotUsingNumachiDB');
+    axios.get(_API_URI_ + '/v1/banned-words')  
+        .then(function (response) {
+            const d = response.data;
+            if(d.code !== 200) return botEvent(`NumachiDB:${d.code}:0`);
+            for(i of d.json){
+                bannedWordList.push(i);
+            }
+            return botEvent(`NumachiDB:${d.code}:${d.json.length}`)
+        })
+        .catch(function (error) {
+            return botEvent(`NumachiDB:${error}:e`)
+        })
+}
+
 let chatSession = {};
 
 
@@ -48,7 +67,7 @@ function addMsgToLog(message = 'N/A', stranger = false, authorId = 'none'){
         stranger,
         message,
         authorId
-    })
+    });
 }
 
 
@@ -63,7 +82,11 @@ fs.readFile('./data.json', "utf-8", (err, jsonStr) => {
 });
 
 function setModerationState(){
-    if(db.moderated === "false") isModerated = false;
+    if(db.moderated === "false"){ 
+        isModerated = false;
+    } else {
+        isModerated = true;
+    }
 }
 
 function setValue(key, val, msg){
@@ -79,7 +102,6 @@ function setValue(key, val, msg){
             if(msg) msg.reply('New data set successfully.');
             db = parsed;
             setModerationState();
-            console.log(isModerated)
         }
     });
 }
@@ -91,7 +113,47 @@ bot.on("message", (msg) => {
     if(msg.channel.id !== channelID) return;
     if(msg.author.bot) return;
 
-    if(args[0] === `${prefix}getchat`){
+    if(args[0] === `${prefix}help`){
+        let commands = [
+            {
+                n: "help",
+                desc: "Get help with commands."
+            },
+            {
+                n: "start",
+                desc: "Start a session in Omegle!"
+            },
+            {
+                n: "end",
+                desc: "End an Omegle session."
+            },
+            {
+                n: "w",
+                desc: "Whisper inside of a Omegle session."
+            }
+        ]
+
+        let mapped = commands.map(i => {
+            return (`\`${prefix}${i.n}\` ${i.desc}`)
+        });
+        const embed = new Discord.MessageEmbed()
+            .setTitle(`**Help**`)
+            .setDescription(mapped.join("\n"))
+            .setTimestamp()
+            .setColor('#2F95DC')
+            .setFooter(_FOOTER_TEXT_)
+        return msg.channel.send(embed);
+    } else if(args[0] === `${prefix}clearchats`){
+        if(!_BOT_ADMINS_.includes(msg.author.id)) return;
+
+        fs.writeFile('./messages.json', JSON.stringify({}), err => {
+            if(err){
+                return msg.reply('An error has occured.')
+            } else {
+                return msg.reply('Success.')
+            }
+        });
+    } else if(args[0] === `${prefix}getchat`){
         if(!_BOT_ADMINS_.includes(msg.author.id)) return;
         if(!args[1]) return msg.reply('ID missing.');
         if(!args[2]) return msg.reply('Provide what you want to see. (0-25)');
@@ -111,10 +173,12 @@ bot.on("message", (msg) => {
         const formatedMsg = messages.slice(counts[0], counts[1]);
 
         const listItems = formatedMsg.map(i => {
-            return (`${i.stranger ? 'Stranger' : `Bot(${i.authorId})`}: ${i.message}`)
+            const iu = bot.users.cache.get(i.authorId);
+            return (`${i.stranger ? 'Stranger' : `Bot(${iu.username}#${iu.discriminator}|${iu.id})`}: ${i.message}`)
         });
         
-        const msgReady = listItems.join("\n---\m");
+        const msgReady = listItems.join("\n---\n");
+        botEvent(`Sending:LogID:${args[1]} ${msg.author.username}#${msg.author.discriminator}`)
         bot.users.cache.get(msg.author.id).send(`**${args[1]} MSG-LOG [${listItems.length}/${messages.length}]**\n\n${msgReady}`)
     } else if(args[0] === `${prefix}setdb`){
         if(!_BOT_ADMINS_.includes(msg.author.id)) return;
@@ -134,7 +198,7 @@ bot.on("message", (msg) => {
 
         om.connect(args[1] ? tags : [], isModerated);
         const embed = new Discord.MessageEmbed()
-            .setTitle(args[1] ? `**Finding Session**` : `**Connected to Stranger**`)
+            .setTitle(args[1] ? `**Finding Session**` : `**Connecting to Stranger**`)
             .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
             .setColor('#2F95DC')
             .addField('Status', `🟠 Connecting... (Will auto-disconnect in 10 seconds if no stranger is found)`, true)
@@ -163,10 +227,15 @@ bot.on("message", (msg) => {
                     .setTimestamp()
                     .setFooter(_FOOTER_TEXT_)
             
-                bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
-                    .then(msg=> {
-                        msg.edit(embed)
-                    })
+                try {
+                    bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
+                        .then(msg=> {
+                            msg.edit(embed)
+                        })
+                } catch(e){
+                    // send new
+                    bot.channels.cache.get(channelID).send(embed);
+                }
             }
         }, 10000);
         currentChannel.active = true;
@@ -209,14 +278,16 @@ om.on("commonLikes", (likes) => {
     bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
         .then(msg=> {
             msg.edit(embed)
-        })
+        }).catch(e => {
+            bot.channels.cache.get(channelID).send(embed);
+        });
 })
 
 bot.on("ready", () => {
     botEvent('ready')
+    indexDatabase();
 
-    bot.user.setActivity('Powered by Numachi');
-    bot.user.setActivity('Omegle', { type: 'WATCHING' })
+    bot.user.setActivity(conf.status ? conf.status.replace("[PREFIX]", prefix) : 'Powered by Numachi.', { type: 'WATCHING' })
 })
 
 om.on("typing", () => {
@@ -234,8 +305,6 @@ om.on("disconnected", () => {
     bot.guilds.cache.get(GID).channels.cache.get(channelID).stopTyping()
     fs.readFile('./messages.json', 'utf-8', (err, jstr) => {
         let existingLog = JSON.parse(jstr);
-        console.log(currentChannel.cid)
-        console.log(chatSession[currentChannel.cid])
         existingLog[currentChannel.cid] = chatSession[currentChannel.cid];
 
         fs.writeFile('./messages.json', JSON.stringify(existingLog), err => {
@@ -282,7 +351,9 @@ om.on("antinudeBanned", () => {
             bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
                 .then(msg=> {
                     msg.edit(embed)
-                })
+                }).catch(e => {
+                    bot.channels.cache.get(channelID).send(embed);
+                });
         }
     }, 10000);
     
@@ -325,7 +396,9 @@ om.on("waiting", () => {
     bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
         .then(msg=> {
             msg.edit(embed)
-        })
+        }).catch(e => {
+            bot.channels.cache.get(channelID).send(embed);
+        });
 })
 
 om.on("recaptchaRequired", (recap) => {
@@ -351,7 +424,6 @@ om.on('connected',function(){
 	botEvent('connected');
 
     currentChannel.cid = nanoid(14);
-    
     const embed = new Discord.MessageEmbed()
         .setTitle(`**Connected to Stranger**`)
         .setDescription(`Stop this session by using \`${prefix}end\`\n🤫 whisper to the channel (does not go to stranger) \`${prefix}w\``)
@@ -363,16 +435,22 @@ om.on('connected',function(){
 
     if(!isModerated) embed.addField(`⚠️ Unmoderated`, `You are currently on the unmoderated version of omegle!`)
 
+
     bot.channels.cache.get(channelID).messages.fetch(currentChannel.startMsg)
         .then(msg=> {
             msg.edit(embed)
-        })
+        }).catch(e => {
+            bot.channels.cache.get(channelID).send(embed);
+        });
 
     currentChannel.started = true;
     currentChannel.active = true;
 });
 
-om.on('gotMessage',function(msg){
+om.on('gotMessage',function(strangerMsg){
+    let msg = strangerMsg;
+    if(msg.length > 1020) msg = msg.substr(0, 1020);
+    
     for(w of bannedWordList){
         if(msg.toLowerCase().includes(w.toLowerCase())){
             const errorStrings = errorCodes.x['0273'];

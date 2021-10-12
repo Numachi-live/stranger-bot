@@ -1,19 +1,13 @@
 {
-    "prefix": "!",
+    "prefix": ".",
+    "status": "Omegle ([PREFIX]help)",
     "channelID": "885812578624892938",
     "guildID": "879030309285400596",
     "admins": [
         "557218928368156674"
     ],
+    "useNumachiWordDB": true,
     "bannedWords": [
-        "nude",
-        "kik", 
-        "kiik",
-        "nudes",
-        "sluts4fuck",
-        "play4fuck",
-        "talk2fuck",
-        "game4sex",
-        "dateforfuck"
+
     ]
 }
