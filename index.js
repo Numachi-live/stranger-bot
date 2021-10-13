@@ -20,6 +20,10 @@ let spyMode = false;
 const errorCodes = require('./errorCodes.json');
 const _API_URI_ = 'https://api-o.numachi.live' // DONT CHANGE UNLESS YOU KNOW WHAT YOU ARE DOING
 
+// cooldown manager
+let cooldowns = {};
+cooldowns.start_session = new Set();
+
 let currentChannel = {
     active: false,
     id: '',
@@ -143,6 +147,11 @@ bot.on("message", (msg) => {
             .setColor('#2F95DC')
             .setFooter(_FOOTER_TEXT_)
         return msg.channel.send(embed);
+    } else if(args[0] === `${prefix}indexdb`){
+        if(!_BOT_ADMINS_.includes(msg.author.id)) return;
+
+        indexDatabase();
+        return msg.reply('Indexed.')
     } else if(args[0] === `${prefix}clearchats`){
         if(!_BOT_ADMINS_.includes(msg.author.id)) return;
 
@@ -195,6 +204,13 @@ bot.on("message", (msg) => {
         if(args[1]){
             delete tags[0];
         }
+
+        if(cooldowns.start_session.has(msg.guild.id)) return msg.reply(`Yikes, this guild is on a cooldown! Please wait for max ${(conf?.cooldowns?.start_session ? conf?.cooldowns.start_session : 5000) / 1000} seconds.`)
+
+        cooldowns.start_session.add(msg.guild.id);
+        setTimeout(() => {
+            cooldowns.start_session.delete(msg.guild.id);
+        }, conf?.cooldowns?.start_session ? conf?.cooldowns?.start_session : 5000)
 
         currentChannel.cid = nanoid(14);
         om.connect(args[1] ? tags : [], isModerated);
@@ -285,7 +301,8 @@ om.on("commonLikes", (likes) => {
         .then(msg=> {
             msg.edit(embed)
         }).catch(e => {
-            bot.channels.cache.get(channelID).send(embed);
+            let fallbackMsg = `[${currentChannel.cid}] Stranger found with common interests!\n**${likes}**`;
+            bot.channels.cache.get(channelID).send(fallbackMsg);
         });
 })
 
@@ -404,12 +421,13 @@ om.on("waiting", () => {
         .then(msg=> {
             msg.edit(embed)
         }).catch(e => {
-            bot.channels.cache.get(channelID).send(embed);
+            let fallbackMsg = `[${currentChannel.cid}] Waiting for stranger...`;
+            bot.channels.cache.get(channelID).send(fallbackMsg);
         });
 })
 
 om.on("recaptchaRequired", (recap) => {
-    console.log(recap)
+    console.log(recap, 'recap')
 })
 
 om.on('gotID',function(id){

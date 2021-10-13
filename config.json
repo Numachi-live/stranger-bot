@@ -10,5 +10,8 @@
     "guidelines": "Hey, please be respectful to others and follow the Omegle ToS. Please do not state that you are under the age of 13. And please use logic.",
     "bannedWords": [
 
-    ]
+    ],
+    "cooldowns": {
+        "start_session": 5000
+    }
 }
